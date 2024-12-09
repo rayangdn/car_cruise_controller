@@ -19,47 +19,47 @@ clc
 % A matrix components (4x4):
 % A11 = d(x_dot)/dx = 0
 % A12 = d(x_dot)/dy = 0
-% A13 = d(x_dot)/dtheta = -V*sin(theta)
-% A14 = d(x_dot)/dV = cos(theta)
+% A13 = d(x_dot)/dtheta = 0
+% A14 = d(x_dot)/dV = 1
 
 % A21 = d(y_dot)/dx = 0
 % A22 = d(y_dot)/dy = 0
-% A23 = d(y_dot)/dtheta = V*cos(theta)
-% A24 = d(y_dot)/dV = sin(theta)
+% A23 = d(y_dot)/dtheta = Vs
+% A24 = d(y_dot)/dV = 0
 
 % A31 = d(theta_dot)/dx = 0
 % A32 = d(theta_dot)/dy = 0
 % A33 = d(theta_dot)/dtheta = 0
-% A34 = d(theta_dot)/dV = 1/lr * tan(delta)
+% A34 = d(theta_dot)/dV = 0
 
 % A41 = d(V_dot)/dx = 0
 % A42 = d(V_dot)/dy = 0
 % A43 = d(V_dot)/dtheta = 0
-% A44 = d(V_dot)/dV = -(Pmax*uT/V^2 + rho*Cd*Af*V)/m
+% A44 = d(V_dot)/dV = -(Pmax*uT/Vs^2 + rho*Cd*Af*Vs)/m
 
 % B matrix components (4x2):
 % B11 = d(x_dot)/ddelta = 0
 % B12 = d(x_dot)/duT = 0
 
-% B21 = d(y_dot)/ddelta = 0
+% B21 = d(y_dot)/ddelta = (V * lr)/(lr + lf)
 % B22 = d(y_dot)/duT = 0
 
-% B31 = d(theta_dot)/ddelta = V/(lr * cos^2(delta))
+% B31 = d(theta_dot)/ddelta = V/(lr + lf)
 % B32 = d(theta_dot)/duT = 0
 
 % B41 = d(V_dot)/ddelta = 0
-% B42 = d(V_dot)/duT = Pmax/(m*V)
+% B42 = d(V_dot)/duT = Pmax/(m*Vs)
 
 % At steady state (xs,us), with theta=0, delta=0:
-% A = [0    0    -Vs   1;
-%      0    0     0    0;
-%      0    0     0    1/lr;
+% A = [0    0     0     1;
+%      0    0     Vs    0;
+%      0    0     0     0;
 %      0    0     0    -(Pmax*uTs/Vs^2 + rho*Cd*Af*Vs)/m];
 
-% B = [0         0;
-%      0         0;
-%      Vs/lr     0;
-%      0         Pmax/(m*Vs)];
+% B = [0                           0;
+%      (Vs * lf)/(lr + lf)         0;
+%      Vs/(lr + lf)                0;
+%      0                Pmax/(m*Vs)];
 
 % Where Vs is steady state velocity
 % uTs is steady state throttle solving force balance
@@ -90,3 +90,14 @@ array2table(connectivity_A, 'RowNames', states, 'VariableNames', states)
 
 disp('Input connectivity:')
 array2table(connectivity_B, 'RowNames', states, 'VariableNames', inputs)
+
+%% Todo 2.2
+[sys_lon, sys_lat] = car.decompose(sys);
+disp('Longitudinal dynamics')
+sys_lon
+disp('Latera dynamics')
+sys_lat
+
+%% Discretization
+
+[fd_xs_us, Ad, Bd, Cd, Dd] = Car.c2d_with_offset(sys, Ts);
