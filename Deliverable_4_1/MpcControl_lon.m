@@ -51,7 +51,10 @@ classdef MpcControl_lon < MpcControlBase
             % Cost matrices
             Q = diag([0, 1]); % Only penalize velocity error, not position (states are [x, V])
             R = 1;            % Penalize throttle usage
-            P = Q;            % Terminal cost matrix
+            
+            % Terminal cost matrix
+            %P = dlyap(mpc.A, Q); doesnt work???
+            P = Q;
 
             % Constraints
             con = [];
@@ -65,6 +68,11 @@ classdef MpcControl_lon < MpcControlBase
             % Input constraints |U_T| ≤ 1
             con = con + (-1 - mpc.us <= U <= 1 - mpc.us);
 
+            % Set input to apply (add back steady-state offset)
+            con = con + (u0 == U(:,1) + mpc.us);
+            
+            % Terminal set constraint (approximated with simple box constraint)
+            % WHAT SHOULD WE PUT???
             % Objective function
             obj = 0;
             for k = 1:N-1
@@ -76,9 +84,6 @@ classdef MpcControl_lon < MpcControlBase
             % Terminal cost
             obj = obj + (X(:,N) - [0; V_ref-mpc.xs(2)])'*P*(X(:,N) - [0; V_ref-mpc.xs(2)]);
                         
-            % Set input to apply (add back steady-state offset)
-            con = con + (u0 == U(:,1) + mpc.us);
-
             % Debug variables
             debugVars = {X, U};
             
@@ -113,7 +118,7 @@ classdef MpcControl_lon < MpcControlBase
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
             % YOUR CODE HERE YOUR CODE HERE YOUR CODE HERE YOUR CODE HERE
             Vs_ref = ref;
-            us_ref = (1-A)/B * (ref-xs) + us;
+            us_ref = (1-A)/B * (ref-xs) + us - 1/B * d_est;
             % YOUR CODE HERE YOUR CODE HERE YOUR CODE HERE YOUR CODE HERE
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         end
