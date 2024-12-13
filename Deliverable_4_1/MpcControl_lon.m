@@ -45,45 +45,42 @@ classdef MpcControl_lon < MpcControlBase
             % SET THE PROBLEM CONSTRAINTS con AND THE OBJECTIVE obj HERE
 
             % Prediction horion optimization variables
-            X = sdpvar(nx, N); % States over horizon
-            U = sdpvar(nu, N-1); % Inputs over horizon
+            X = sdpvar(nx, N);      % States over horizon
+            U = sdpvar(nu, N-1);    % Inputs over horizon
             
             % Cost matrices
-            Q = diag([0, 1]); % Only penalize velocity error, not position (states are [x, V])
-            R = 1;            % Penalize throttle usage
-            
-            % Terminal cost matrix
-            %P = dlyap(mpc.A, Q); doesnt work???
-            P = Q;
+            Q = diag([0, 1]);       % Only penalize velocity error, not position (states are [x, V])
+            R = 1;                  % Penalize throttle usage
+            A_v = mpc.A(2,2);       % Get only velocity dynamics
+            Q_v = 1;                % velocity weight from Q
+            P_v = dlyap(A_v, Q_v);
+            P = diag([0, P_v]);     % Terminal cost matrix
 
             % Constraints
             con = [];
-
             % Initial state constraint
-            con = con + (X(:,1) == x0 - mpc.xs);
-
+            con = con + (X(:,1) == x0 - mpc.xs); 
             % System dynamics constraints
-            con = con + (X(:,2:N) == mpc.A*X(:,1:N-1) + mpc.B*U(:,1:N-1));
-            
+            con = con + (X(:,2:N) == mpc.A*X(:,1:N-1) + mpc.B*U(:,1:N-1)); 
             % Input constraints |U_T| ≤ 1
             con = con + (-1 - mpc.us <= U <= 1 - mpc.us);
-
+            % Terminal constraint (velocity to be close to reference)
+            alpha = 0.1;  
+            con = con + (abs(X(2,N) - (V_ref-mpc.xs(2))) <= alpha);  
             % Set input to apply (add back steady-state offset)
             con = con + (u0 == U(:,1) + mpc.us);
-            
-            % Terminal set constraint (approximated with simple box constraint)
-            % WHAT SHOULD WE PUT???
+
             % Objective function
             obj = 0;
             for k = 1:N-1
-                % State error cost (deviation from target)
+                % Set input to apply (add back steady-state offset)
                 obj = obj + (X(:,k) - [0; V_ref-mpc.xs(2)])'*Q*(X(:,k) - [0; V_ref-mpc.xs(2)]);
                 % Input cost (penalize deviation from u_ref)
-                obj = obj + (U(:,k) - (u_ref-mpc.us))'*R*(U(:,k) - (u_ref-mpc.us));
+                obj = obj + (U(:,k) - (u_ref-mpc.us))'*R*(U(:,k) - (u_ref-mpc.us));                                       
             end
             % Terminal cost
             obj = obj + (X(:,N) - [0; V_ref-mpc.xs(2)])'*P*(X(:,N) - [0; V_ref-mpc.xs(2)]);
-                        
+            
             % Debug variables
             debugVars = {X, U};
             

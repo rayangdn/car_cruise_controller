@@ -44,45 +44,49 @@ classdef MpcControl_lat < MpcControlBase
             U = sdpvar(nu, N-1);
             
             % Cost matrices
-            Q = diag([1, 10]); % Penalize y and theta error, higher weight on heading
-            R = 1;             % Penalize steering angle usage
-            P = Q;             % Terminal cost
+            Q = diag([1, 10]);  % Penalize y and theta error, higher weight on heading
+            R = 1;              % Penalize steering angle usage
+            P = Q;              % Terminal cost
+            
+            % Slightly stabilize system 
+            %A_stable = mpc.A - 1e-6*eye(2);
+            %P = dlyap(A_stable, Q);
+            [~, P , ~] = dlqr(mpc.A,mpc.B,Q,R);
+            % P = dlyap(mpc.A, Q); DOESNT WORK, ADD CONSTRAINT ON TERMINAL
+            % SET??
 
             % Constraints
             con = [];
-
             % Initial state constraint
-            con = con + (X(:,1) == x0 - mpc.xs);
-            
+            con = con + (X(:,1) == x0 - mpc.xs);    
             % Dynamic constraints
             con = con + (X(:,2:N) == mpc.A*X(:,1:N-1) + mpc.B*U(:,1:N-1));
-            
-            % Input constraints |δ| ≤ 30° = 0.5236 rad
-            con = con + (-0.5236 - mpc.us <= U <= 0.5236 - mpc.us);
-            
-            % State constraints:
-            % -0.5 m ≤ y ≤ 3.5 m
-            % |θ| ≤ 5° = 0.0873 rad
-            con = con + (-0.5 - mpc.xs(1) <= X(1,:) <= 3.5 - mpc.xs(1));    % y position
-            con = con + (-(5 * pi / 180) - mpc.xs(2) <= X(2,:) <= (5 * pi / 180) - mpc.xs(2)); % theta
+            % Input constraints 
+            con = con + (-30*pi/180 - mpc.us <= U <= 30*pi/180 - mpc.us); 
+            % State constraints
+            con = con + (-0.5 - mpc.xs(1) <= X(1,:) <= 3.5 - mpc.xs(1)); % y
+            con = con + (-(5*pi/180) - mpc.xs(2) <= X(2,:) <= (5*pi/180) - mpc.xs(2)); % theta
+            % Terminal constraints
+            alpha_y = 0.05;     
+            alpha_theta = 0.02; 
+            con = con + (abs(X(1,N)-(x_ref(1)-mpc.xs(1))) <= alpha_y); % y 
+            con = con + (abs(X(2,N)-(x_ref(2)-mpc.xs(2))) <= alpha_theta); % theta
+            % Set input to apply (add back steady-state offset)
+            con = con + (u0 == U(:,1) + mpc.us);            
 
-                        % Objective function
             % Objective function
             obj = 0;
             for k = 1:N-1
-                % State cost (needs to consider xs offset)
-                obj = obj + (X(:,k) - [x_ref(1)-mpc.xs(1); x_ref(2)-mpc.xs(2)])'*Q*(X(:,k) - [x_ref(1)-mpc.xs(1); x_ref(2)-mpc.xs(2)]);
+                % State cost
+                obj = obj + (X(:,k) - [x_ref(1)-mpc.xs(1); x_ref(2)-mpc.xs(2)])'*Q*(X(:,k) - [x_ref(1)-mpc.xs(1); x_ref(2)-mpc.xs(2)]); 
                 % Input cost
                 obj = obj + (U(:,k) - (u_ref-mpc.us))'*R*(U(:,k) - (u_ref-mpc.us));
             end
             % Terminal cost
-            obj = obj + (X(:,N) - [x_ref(1)-mpc.xs(1); x_ref(2)-mpc.xs(2)])'*P*(X(:,N) - [x_ref(1)-mpc.xs(1); x_ref(2)-mpc.xs(2)]);
-
-            % Set input to apply (add back steady-state offset)
-            con = con + (u0 == U(:,1) + mpc.us);
-
+            obj = obj + (X(:,N) - [x_ref(1)-mpc.xs(1); x_ref(2)-mpc.xs(2)])'*P*(X(:,N) - [x_ref(1)-mpc.xs(1); x_ref(2)-mpc.xs(2)]);                                   
+            
             % Debug variables
-            debugVars = {X, U};
+            debugVars = {X, U};         
             
             % YOUR CODE HERE YOUR CODE HERE YOUR CODE HERE YOUR CODE HERE
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
