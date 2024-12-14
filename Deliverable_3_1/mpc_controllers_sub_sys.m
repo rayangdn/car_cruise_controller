@@ -3,8 +3,9 @@ close all
 clc
 
 %% Initialize MPC Controllers
+
 Ts = 1/10;                               % Sample time: 0.1 seconds
-H_lon = 20;                              % Prediction horizon: 2 seconds
+H = 20;                              % Prediction horizon: 2 seconds
 
 % Setup car and get linearized model
 car = Car(Ts);
@@ -13,11 +14,12 @@ sys = car.linearize(xs, us);             % Get linearized system
 [sys_lon, sys_lat] = car.decompose(sys); % Split into longitudinal and lateral
 
 % Create MPC controllers
-mpc_lon = MpcControl_lon(sys_lon, Ts, H_lon);
-mpc_lat = MpcControl_lat(sys_lat, Ts, H_lon);
+mpc_lon = MpcControl_lon(sys_lon, Ts, H);
+mpc_lat = MpcControl_lat(sys_lat, Ts, H);
 mpc = car.merge_lin_controllers(mpc_lon, mpc_lat);
 
-%% Simulate Open-Loop Longitudinal Control
+%% Simulate Open-Loop Longitudinal MPC
+
 % Setup initial conditions and reference
 x_lon = [0 80/3.6]';                     % Start at 80 km/h
 ref_lon = 120/3.6;                       % Target 120 km/h
@@ -48,7 +50,8 @@ xlabel('Time [s]');
 title('Predicted input trajectory');
 grid on;
 
-%% Simulate Open-Loop Lateral Control
+%% Simulate Open-Loop Lateral MPC
+
 % Setup initial conditions and reference
 x_lat = [0 0]';                          % Start at center of lane
 ref_lat = 3;                             % 3m lane change
@@ -88,7 +91,7 @@ xlabel('Time [s]');
 title('Predicted steering input trajectory');
 grid on;
 
-%% Simulating Closed-Loop Combined Control
+%% Simulating Closed-Loop Combined MPC
 
 x0 = [0 0 0 80/3.6]'; % (x, y, theta, V)
 ref1 = [0 80/3.6]'; % (y ref, V ref)

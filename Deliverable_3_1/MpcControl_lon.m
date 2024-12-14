@@ -150,9 +150,9 @@ classdef MpcControl_lon < MpcControlBase
             
             % Compute the required steady-state input (throttle) to maintain the reference velocity
             % At steady state, the state doesn't change, so x(k+1) = x(k)
-            % This means: 0 = A*(Vs - xs) + B*(us - us_ss)
+            % This means: 0 = A*(Vs_ref - xs) + B*(us_ref - us)
             % Solving for us_ss:
-            % us_ss = us - A*(Vs-xs)/B
+            % us_ref = us - A*(Vs_ref-xs)/B
             % where:
             %   - A, B are the linearized system matrices for velocity
             %   - xs is the linearization velocity point
@@ -161,9 +161,9 @@ classdef MpcControl_lon < MpcControlBase
             us_ref = us - (A*(Vs_ref-xs))/B;
             
             % Enforce input constraints by saturating the computed input
-            % The input must stay within ±1 of the linearization point us
+            % The input must stay within ±1 
             % This ensures we respect the physical limitations of the throttle
-            us_ref = min(max(us_ref, mpc.us-1), mpc.us+1);
+            us_ref = min(max(us_ref, -1), 1);
 
             % YOUR CODE HERE YOUR CODE HERE YOUR CODE HERE YOUR CODE HERE
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

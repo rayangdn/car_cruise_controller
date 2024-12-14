@@ -19,7 +19,7 @@ classdef MpcControl_lon < MpcControlBase
             N = N_segs + 1;              % Last index in 1-based Matlab indexing
 
             [nx, nu] = size(mpc.B);
-
+            
             % Targets
             V_ref = sdpvar(1);
             u_ref = sdpvar(1);
@@ -43,45 +43,75 @@ classdef MpcControl_lon < MpcControlBase
             %       in mpc.xs and mpc.us.
             
             % SET THE PROBLEM CONSTRAINTS con AND THE OBJECTIVE obj HERE
-
-            % Prediction horion optimization variables
-            X = sdpvar(nx, N);      % States over horizon
-            U = sdpvar(nu, N-1);    % Inputs over horizon
             
-            % Cost matrices
-            Q = diag([0, 1]);       % Only penalize velocity error, not position (states are [x, V])
-            R = 1;                  % Penalize throttle usage
-            A_v = mpc.A(2,2);       % Get only velocity dynamics
-            Q_v = 1;                % velocity weight from Q
-            P_v = dlyap(A_v, Q_v);
-            P = diag([0, P_v]);     % Terminal cost matrix
-
-            % Constraints
-            con = [];
+            % Define cost matrices for the MPC objective function
+            % Q penalizes state deviations from reference
+            % We only penalize velocity error (second state) by setting Q = diag([0, 1])
+            Q = diag([0, 1]);     % State cost matrix: No penalty on position, weight of 1 on velocity
+            R = 1;                % Input cost matrix: Penalty of 1 on throttle usage
+            
+            % Define input constraints: -1 ≤ u - us ≤ 1
+            % These constraints ensure the throttle input stays within ±1 of the linearization point us
+            M = [-1; 1];          % Constraint matrix for -u ≤ 1 and u ≤ 1
+            m = [1; 1];          % Constraint bounds
+            
+            % Set up MPC optimization problem
+            
+            % Define optimization variables
+            % X represents the state trajectory: position and velocity deviations from xs
+            % U represents the input trajectory: throttle deviations from us
+            X = sdpvar(nx, N);    % States for all N timesteps (nx × N matrix)
+            U = sdpvar(nu, N-1);  % Inputs for N-1 timesteps (nu × (N-1) matrix)
+            
+            % Set up constraints
+            
             % Initial state constraint
-            con = con + (X(:,1) == x0 - mpc.xs); 
-            % System dynamics constraints
-            con = con + (X(:,2:N) == mpc.A*X(:,1:N-1) + mpc.B*U(:,1:N-1)); 
-            % Input constraints |U_T| ≤ 1
-            con = con + (-1 - mpc.us <= U <= 1 - mpc.us);
-            % Terminal constraint (velocity to be close to reference)
-            alpha = 0.1;  
-            con = con + (abs(X(2,N) - (V_ref-mpc.xs(2))) <= alpha);  
-            % Set input to apply (add back steady-state offset)
-            con = con + (u0 == U(:,1) + mpc.us);
-
-            % Objective function
-            obj = 0;
-            for k = 1:N-1
-                % Set input to apply (add back steady-state offset)
-                obj = obj + (X(:,k) - [0; V_ref-mpc.xs(2)])'*Q*(X(:,k) - [0; V_ref-mpc.xs(2)]);
-                % Input cost (penalize deviation from u_ref)
-                obj = obj + (U(:,k) - (u_ref-mpc.us))'*R*(U(:,k) - (u_ref-mpc.us));                                       
-            end
-            % Terminal cost
-            obj = obj + (X(:,N) - [0; V_ref-mpc.xs(2)])'*P*(X(:,N) - [0; V_ref-mpc.xs(2)]);
+            % The initial state deviation must equal the difference between the actual initial state
+            % and the linearization point
+            con = (X(:,1) == x0 - mpc.xs);
             
-            % Debug variables
+            % Loop through the prediction horizon to set up dynamics and input constraints
+            for k = 1:N-1
+                % System dynamics constraint
+                % The state evolution follows the discrete-time linearized dynamics:
+                % x(k+1) - xs = A(x(k) - xs) + B(u(k) - us) +Bd(k)
+                d = [0; mpc.B(2,1)*d_est];  % Only affects velocity
+                con = con + (X(:,k+1) == mpc.A*X(:,k) + mpc.B*U(:,k) + d);
+                
+                % Input constraints
+                % The absolute input (U + us) must stay within ±1
+                % Transform deviation coordinates to absolute: u = U + us
+                con = con + (M*(U(:,k) + mpc.us) <= m);
+            end
+            
+            % Constraint on first input to be applied
+            % Convert the input from deviation coordinates back to absolute coordinates
+            con = con + (u0 == U(:,1) + mpc.us);
+            
+            % Set up the objective function
+            obj = 0;
+            
+            % Loop through the prediction horizon to sum up stage costs
+            for k = 1:N-1
+                % State error term
+                % x_ref is the target state in absolute coordinates
+                % Convert to deviation coordinates by subtracting xs
+                x_ref = [0; V_ref];                    % Target state (no position reference, only velocity)
+                state_error = X(:,k) - (x_ref - mpc.xs);   % Error in deviation coordinates
+                obj = obj + state_error'*Q*state_error;    % Quadratic state cost
+                
+                % Input error term
+                % Track the reference input in deviation coordinates
+                input_error = U(:,k) - (u_ref - mpc.us);   % Error in deviation coordinates
+                obj = obj + input_error'*R*input_error;    % Quadratic input cost
+            end
+            
+            % Add terminal cost (same form as stage cost)
+            x_ref = [0; V_ref];
+            state_error = X(:,N) - (x_ref - mpc.xs);
+            obj = obj + state_error'*Q*state_error;
+            
+            % Store variables for debugging
             debugVars = {X, U};
             
             % YOUR CODE HERE YOUR CODE HERE YOUR CODE HERE YOUR CODE HERE
@@ -114,8 +144,29 @@ classdef MpcControl_lon < MpcControlBase
 
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
             % YOUR CODE HERE YOUR CODE HERE YOUR CODE HERE YOUR CODE HERE
+            
+            % Store the target velocity as our reference
+            % This is the absolute velocity we want to achieve
             Vs_ref = ref;
-            us_ref = (1-A)/B * (ref-xs) + us - 1/B * d_est;
+            
+            % Compute the required steady-state input (throttle) to maintain the reference velocity
+            % At steady state, the state doesn't change, so x(k+1) = x(k)
+            % This means: 0 = A*(Vs_ref - xs) + B*(us_ref - us)
+            % Solving for us_ss:
+            % us_ref = us - A*(Vs_ref-xs)/B + B*d_est 
+            % where:
+            %   - A, B are the linearized system matrices for velocity
+            %   - xs is the linearization velocity point
+            %   - us is the linearization input point
+            %   - (Vs_ref-xs) is how far we want to deviate from the linearization point
+            %   - d_est is the constant disturbance on the velocity
+            us_ref = us - (A*(Vs_ref-xs))/B - d_est;
+            
+            % Enforce input constraints by saturating the computed input
+            % The input must stay within ±1 
+            % This ensures we respect the physical limitations of the throttle
+            us_ref = min(max(us_ref, -1), 1);
+
             % YOUR CODE HERE YOUR CODE HERE YOUR CODE HERE YOUR CODE HERE
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         end

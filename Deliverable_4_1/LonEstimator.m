@@ -22,32 +22,56 @@ classdef LonEstimator
 
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
             % YOUR CODE HERE YOUR CODE HERE YOUR CODE HERE YOUR CODE HERE
-            % Extended state includes velocity and disturbance: z = [V; d]
-            % We only need velocity dynamics (second row of Ad, Bd)
-            A = Ad(2, 2); % Extract V dynamics
-            B_dist = Bd(2); % Extract input effect on V
-            C = [1, 0];  % Measure velocity [V; d]
 
-            % Extended state dynamics
-
-            % Store linearization points
-            est.xs_hat = [xs(2); 0]; % velocity and zero disturbance
-            est.us_hat = us;      % throttle input
-
-            %Extended system matrices
-            est.A_hat = [A B_dist;   % Original V dynamics with disturbance effect
-                         0 1];       % Disturbance dynamics (constant) 
-            est.B_hat = [B_dist;     % Input effect on V
-                         0];         % Input doesn't affect disturbance
-            est.C_hat = C;       % Measure velocity only
+            % Get the index for velocity in the longitudinal subsystem
+            % In the longitudinal model, state 1 is position, state 2 is velocity
+            velocity_idx = 2; % Index of velocity in the longitudinal subsystem
             
-            % Design observer gain L
-            % Place poles for desired estimator dynamics
-            poles = [0.7, 0.8]; % can be tuned
-            est.L = -place(est.A_hat', est.C_hat', poles)';
-
+            % Set up the extended state vector that includes both velocity and disturbance
+            % xs_hat = [velocity; disturbance] where:
+            % - xs(velocity_idx) is the steady-state velocity from linearization point
+            % - 0 is the initial guess for the disturbance (assumed zero initially)
+            est.xs_hat = [xs(velocity_idx); 0]; % [V; d]
+            
+            % Store the steady-state input for reference
+            % This is needed when converting between absolute and deviation coordinates
+            est.us_hat = us;
+            
+            % Create the augmented system matrix A_hat for the extended state [V; d]
+            % The matrix has form: [a b; 0 1] where:
+            % - a = Ad(velocity_idx,velocity_idx) is how velocity evolves
+            % - b = Bd(velocity_idx) is how the disturbance affects velocity
+            % - [0 1] represents that disturbance stays constant (persistence model)
+            est.A_hat = [Ad(velocity_idx,velocity_idx), Bd(velocity_idx);
+                         0,                             1];
+            
+            % Create the augmented input matrix B_hat for the extended state
+            % The matrix has form: [b; 0] where:
+            % - b = Bd(velocity_idx) is how the input affects velocity
+            % - 0 indicates input doesn't affect disturbance
+            est.B_hat = [Bd(velocity_idx); 
+                         0];
+            
+            % Create the augmented output matrix C_hat
+            % The matrix has form: [c 0] where:
+            % - c = Cd(velocity_idx,velocity_idx) is the velocity measurement
+            % - 0 indicates we can't measure the disturbance directly
+            est.C_hat = [Cd(velocity_idx,velocity_idx), 0]; % Only V is measured
+            
+            % Choose observer poles for desired estimation dynamics
+            % Poles closer to 0 give faster estimation
+            % Poles closer to 1 give slower, more filtered estimation
+            % Values of 0.6 and 0.7 give moderately fast response with some noise filtering
+            poles = [0.6; 0.7];
+            
+            % Calculate the observer gain matrix L using pole placement
+            % We transpose A_hat and C_hat for the place command, then transpose the result
+            % This L matrix will determine how quickly our estimates converge to true values
+            est.L = place(est.A_hat', est.C_hat', poles)';
+            
+            % Store the original continuous-time system model in the estimator object
             est.sys = sys;
-            
+
             % YOUR CODE HERE YOUR CODE HERE YOUR CODE HERE YOUR CODE HERE
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         end
@@ -60,18 +84,43 @@ classdef LonEstimator
             % INPUTS
             %   z_hat      - current estimate (V, dist)
             %   u          - longitudinal input (u_T)
-            %   y          - longitudinal measurement (x, V)
+            %   y          - longitudinal velocity measurement (V)
             % OUTPUTS
             %   z_hat_next - next time step estimate
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
             % YOUR CODE HERE YOUR CODE HERE YOUR CODE HERE YOUR CODE HERE
-            % Estimation equation:
-            % z_hat_next = A_hat*z_hat + B_hat*u + L*(y - C_hat*z_hat)
-            z_hat_next = est.A_hat * z_hat + ...
-                         est.B_hat * (u - est.us_hat) + ...
-                         est.L *(est.C_hat * z_hat - y); 
+            
+           % Convert all signals to deviation coordinates by subtracting their linearization points
+            % This is necessary because our linear model works with deviations from steady state
+            
+            % Convert input from absolute to deviation coordinates
+            u_dev = u - est.us_hat; % Input deviation
+            
+            % Convert measurement from absolute to deviation coordinates
+            % y contains the measured values [position; velocity]
+            % est.xs_hat(1) is the steady-state velocity we linearized around
+            y_dev = y - est.xs_hat(1); % Measurement deviation
+            
+            % Convert state estimate from absolute to deviation coordinates
+            % z_hat contains our current estimates of [velocity; disturbance]
+            % est.xs_hat contains the steady-state values [velocity_ss; disturbance_ss]
+            z_dev = z_hat - est.xs_hat; % State estimate deviation
+            
+            % Apply the observer equation in deviation coordinates:
+            % z_dev_next = A*z_dev + B*u_dev + L*(y - C*z_dev) where:
+            % - est.A_hat * z_dev: How states evolve naturally
+            % - est.B_hat * u_dev: Effect of input on states
+            % - est.L * (y_dev - est.C_hat * z_dev): Correction based on measurement error
+            z_dev_next = est.A_hat * z_dev + ...
+                         est.B_hat * u_dev + ...
+                         est.L * (y_dev - est.C_hat * z_dev);
+            
+            % Convert the next state estimate back to absolute coordinates
+            % This gives us the actual velocity and disturbance estimates
+            z_hat_next = z_dev_next + est.xs_hat;
+
             % YOUR CODE HERE YOUR CODE HERE YOUR CODE HERE YOUR CODE HERE
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         end

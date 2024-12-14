@@ -21,7 +21,7 @@ mpc = car.merge_lin_controllers(mpc_lon, mpc_lat);
 % Create Longitudinal Estimator
 estimator = LonEstimator(sys_lon, Ts);
 
-%% Simulating Closed-Loop Combined MPC with Longitudinal Estimator
+%% Simulating Closed-Loop Combined Control
 
 x0 = [0 0 0 80/3.6]'; % (x, y, theta, V)
 ref1 = [0 80/3.6]';   % (y ref, V ref)
