@@ -61,7 +61,7 @@ classdef LonEstimator
             % Choose observer poles for desired estimation dynamics
             % Poles closer to 0 give faster estimation
             % Poles closer to 1 give slower, more filtered estimation
-            % Values of 0.6 and 0.7 give moderately fast response with some noise filtering
+            % Values of 0.6 and 0.7 give moderately fast response
             poles = [0.6; 0.7];
             
             % Calculate the observer gain matrix L using pole placement

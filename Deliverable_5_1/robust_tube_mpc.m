@@ -17,16 +17,20 @@ mpc_lon = MpcControl_lon(sys_lon, Ts, H);
 mpc_lat = MpcControl_lat(sys_lat, Ts, H);
 mpc = car.merge_lin_controllers(mpc_lon, mpc_lat);
 
+
+%% Simulating Closed-Loop robuste tube MPC 
+
 ref = [0 120/3.6]';
-otherRef = 100 / 3.6;
 params = {};
 params.Tf = 25;
 params.myCar.model = car;
-params.myCar.x0 = [0 0 0 80/3.6]';
+params.myCar.x0 = [0 0 0 100/3.6]';
 params.myCar.u = @mpc.get_u;
 params.myCar.ref = ref;
 params.otherCar.model = car;
-params.otherCar.x0 = [15 0 0 otherRef]';
-params.otherCar.u = car.u_const(otherRef);
+params.otherCar.x0 = [15 0 0 100/3.6]';
+params.otherCar.u = car.u_const(100/3.6);
+%params.otherCar.u = car.u_fwd_ref();
+%params.otherCar.ref = car.ref_robust();
 result = simulate(params);
 visualization(car, result);

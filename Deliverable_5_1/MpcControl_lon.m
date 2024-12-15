@@ -1,130 +1,96 @@
 classdef MpcControl_lon < MpcControlBase
     
     methods
+        function mpc = MpcControl_lon(sys, Ts, H)
+            % Call superclass constructor
+            mpc = mpc@MpcControlBase(sys, Ts, H);
+
+        end
+        
         % Design a YALMIP optimizer object that takes a steady-state state
         % and input (xs, us) and returns a control input
         function ctrl_opti = setup_controller(mpc)
             
-            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-            % INPUTS
-            %   x0           - initial state (estimate)
-            %   V_ref, u_ref - reference state/input
-            %   d_est        - disturbance estimate
-            %   x0other      - initial state of other car
-            % OUTPUTS
-            %   u0           - input to apply to the system
-            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-            
+            % Horizon parameters
             N_segs = ceil(mpc.H/mpc.Ts); % Horizon steps
             N = N_segs + 1;              % Last index in 1-based Matlab indexing
-
+            
             [nx, nu] = size(mpc.B);
             
-            % Targets
+            % Targets (not used in relative dynamics)
             V_ref = sdpvar(1);
             u_ref = sdpvar(1);
-
-            % Disturbance estimate (Ignore this before Todo 4.1)
+            
+            % Disturbance estimate (not used in tube MPC)
             d_est = sdpvar(1);
-
-            % Initial states
+            
+            % Initial states (actual and lead car)
             x0 = sdpvar(nx, 1);
-            x0other = sdpvar(nx, 1); % (Ignore this before Todo 5.1)
-
+            x0other = sdpvar(nx, 1);
+            
             % Input to apply to the system
             u0 = sdpvar(nu, 1);
             
-            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-            % YOUR CODE HERE YOUR CODE HERE YOUR CODE HERE YOUR CODE HERE
+            % YALMIP Decision variables
+            X = sdpvar(nx, N); % Nominal state trajectory
+            U = sdpvar(nu, N-1); % Nominal input trajectory
+
+
+            % Load pre-computed tube MPC components
+            data = load('tube_mpc_data.mat');
             
-            % NOTE: The matrices mpc.A, mpc.B, mpc.C and mpc.D
-            %       are the DISCRETE-TIME MODEL of your system.
-            %       You can find the linearization steady-state
-            %       in mpc.xs and mpc.us.
+            % Safe reference point [position; velocity]
+            xsafe = [data.xsafe_pos; 0];
             
-            % SET THE PROBLEM CONSTRAINTS con AND THE OBJECTIVE obj HERE
-            
-            % Define cost matrices for the MPC objective function
-            % Q penalizes state deviations from reference
-            % We only penalize velocity error (second state) by setting Q = diag([0, 1])
-            Q = diag([0, 1]);     % State cost matrix: No penalty on position, weight of 1 on velocity
-            R = 1;                % Input cost matrix: Penalty of 1 on throttle usage
-            
-            % Define input constraints: -1 ≤ u - us ≤ 1
-            % These constraints ensure the throttle input stays within ±1 of the linearization point us
-            M = [-1; 1];          % Constraint matrix for -u ≤ 1 and u ≤ 1
-            m = [1; 1];          % Constraint bounds
-            
-            % Set up MPC optimization problem
-            
-            % Define optimization variables
-            % X represents the state trajectory: position and velocity deviations from xs
-            % U represents the input trajectory: throttle deviations from us
-            X = sdpvar(nx, N);    % States for all N timesteps (nx × N matrix)
-            U = sdpvar(nu, N-1);  % Inputs for N-1 timesteps (nu × (N-1) matrix)
-            
-            % Set up constraints
-            
-            % Initial state constraint
-            % The initial state deviation must equal the difference between the actual initial state
-            % and the linearization point
-            con = (X(:,1) == x0 - mpc.xs);
-            
-            % Loop through the prediction horizon to set up dynamics and input constraints
-            for k = 1:N-1
-                % System dynamics constraint
-                % The state evolution follows the discrete-time linearized dynamics:
-                % x(k+1) - xs = A(x(k) - xs) + B(u(k) - us) +Bd(k)
-                d = [0; mpc.B(2,1)*d_est];  % Only affects velocity
-                con = con + (X(:,k+1) == mpc.A*X(:,k) + mpc.B*U(:,k) + d);
-                
-                % Input constraints
-                % The absolute input (U + us) must stay within ±1
-                % Transform deviation coordinates to absolute: u = U + us
-                con = con + (M*(U(:,k) + mpc.us) <= m);
-            end
-            
-            % Constraint on first input to be applied
-            % Convert the input from deviation coordinates back to absolute coordinates
-            con = con + (u0 == U(:,1) + mpc.us);
-            
-            % Set up the objective function
+            % Initialize objective and constraints
             obj = 0;
+            con = [];
             
-            % Loop through the prediction horizon to sum up stage costs
+            % Initial state constraint (relative coordinates)
+            con = con + (X(:,1) == x0other - x0 - xsafe);
+            
+            % Cost matrices from data
+            Q = data.Q_track; % State cost for tracking
+            R = data.R_track; % Input cost for tracking
+            
+            % Compute tightened constraint matrices
+            Fx_t = data.X_tilde.A; % State constraints
+            fx_t = data.X_tilde.b;
+            Fu_t = data.U_tilde.A; % Input constraints
+            fu_t = data.U_tilde.b;
+        
+            
+            % Loop over prediction horizon
             for k = 1:N-1
-                % State error term
-                % x_ref is the target state in absolute coordinates
-                % Convert to deviation coordinates by subtracting xs
-                x_ref = [0; V_ref];                    % Target state (no position reference, only velocity)
-                state_error = X(:,k) - (x_ref - mpc.xs);   % Error in deviation coordinates
-                obj = obj + state_error'*Q*state_error;    % Quadratic state cost
+                % Cost function
+                obj = obj + X(:,k)'*Q*X(:,k) + U(:,k)'*R*U(:,k);
                 
-                % Input error term
-                % Track the reference input in deviation coordinates
-                input_error = U(:,k) - (u_ref - mpc.us);   % Error in deviation coordinates
-                obj = obj + input_error'*R*input_error;    % Quadratic input cost
+                % System dynamics
+                con = con + (X(:,k+1) == mpc.A*X(:,k) - mpc.B*U(:,k)); % '-' becausse of the change of dynamics
+                % State and input constraints
+                con = con + (Fx_t*X(:,k) <= fx_t);  % Tightened state constraints
+                con = con + (Fu_t*U(:,k) <= fu_t);  % Tightened input constraints
             end
             
-            % Add terminal cost (same form as stage cost)
-            x_ref = [0; V_ref];
-            state_error = X(:,N) - (x_ref - mpc.xs);
-            obj = obj + state_error'*Q*state_error;
+            % Terminal cost and constraint
+            obj = obj + X(:,N)'*data.Qf*X(:,N);
             
-            % Store variables for debugging
-            debugVars = {X, U};
+            % Get terminal set constraints
+            Fterm = data.terminal_set.A;
+            fterm = data.terminal_set.b;
+            con = con + (Fterm*X(:,N) <= fterm);
             
-            % YOUR CODE HERE YOUR CODE HERE YOUR CODE HERE YOUR CODE HERE
-            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+            % Compute actual input: u = u_nominal + K*(x - x_nominal)
+            % where x is in relative coordinates
+            delta_x = x0other - x0 - xsafe - X(:,1);
+            con = con + (u0 == U(:,1) + data.K*delta_x);
             
             % Return YALMIP optimizer object
             ctrl_opti = optimizer(con, obj, sdpsettings('solver','gurobi'), ...
-                {x0, V_ref, u_ref, d_est, x0other}, {u0, debugVars{:}});
+                {x0, V_ref, u_ref, d_est, x0other}, {u0, X, U});
         end
         
-        % Computes the steady state target which is passed to the
-        % controller
-        function [Vs_ref, us_ref] = compute_steady_state_target(mpc, ref, d_est)
+ function [Vs_ref, us_ref] = compute_steady_state_target(mpc, ref, d_est)
 
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
             % INPUTS
@@ -144,7 +110,7 @@ classdef MpcControl_lon < MpcControlBase
 
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
             % YOUR CODE HERE YOUR CODE HERE YOUR CODE HERE YOUR CODE HERE
-            
+
             % Store the target velocity as our reference
             % This is the absolute velocity we want to achieve
             Vs_ref = ref;
@@ -153,19 +119,14 @@ classdef MpcControl_lon < MpcControlBase
             % At steady state, the state doesn't change, so x(k+1) = x(k)
             % This means: 0 = A*(Vs_ref - xs) + B*(us_ref - us)
             % Solving for us_ss:
-            % us_ref = us - A*(Vs_ref-xs)/B + B*d_est 
+            % us_ref = us - A*(Vs_ref-xs)/B
             % where:
             %   - A, B are the linearized system matrices for velocity
             %   - xs is the linearization velocity point
             %   - us is the linearization input point
             %   - (Vs_ref-xs) is how far we want to deviate from the linearization point
-            %   - d_est is the constant disturbance on the velocity
-            us_ref = us - (A*(Vs_ref-xs))/B - d_est;
+            us_ref = 0;
             
-            % Enforce input constraints by saturating the computed input
-            % The input must stay within ±1 
-            % This ensures we respect the physical limitations of the throttle
-            us_ref = min(max(us_ref, -1), 1);
 
             % YOUR CODE HERE YOUR CODE HERE YOUR CODE HERE YOUR CODE HERE
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

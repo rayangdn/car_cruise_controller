@@ -44,72 +44,64 @@ classdef MpcControl_lon < MpcControlBase
             
             % SET THE PROBLEM CONSTRAINTS con AND THE OBJECTIVE obj HERE
             
-            % Define cost matrices for the MPC objective function
-            % Q penalizes state deviations from reference
-            % We only penalize velocity error (second state) by setting Q = diag([0, 1])
-            Q = diag([0, 1]);     % State cost matrix: No penalty on position, weight of 1 on velocity
-            R = 1;                % Input cost matrix: Penalty of 1 on throttle usage
+            % Cost matrices for the MPC objective function
+            % Q_track: State cost matrix that penalizes deviations from reference state
+            % - No penalty on position (first state)
+            % - Weight of 8 on velocity error (second state)
+            Q_track = diag([0, 8]);
             
-            % Define input constraints: -1 ≤ u - us ≤ 1
-            % These constraints ensure the throttle input stays within ±1 of the linearization point us
-            M = [-1; 1];          % Constraint matrix for -u ≤ 1 and u ≤ 1
-            m = [1; 1];          % Constraint bounds
+            % R_track: Input cost matrix that penalizes control effort
+            % - Weight of 7 on throttle usage
+            R_track = 7;
             
-            % Set up MPC optimization problem
+            % More conservative weights for terminal control
+            Q_term = diag([0, 4]);
             
-            % Define optimization variables
-            % X represents the state trajectory: position and velocity deviations from xs
-            % U represents the input trajectory: throttle deviations from us
-            X = sdpvar(nx, N);    % States for all N timesteps (nx × N matrix)
-            U = sdpvar(nu, N-1);  % Inputs for N-1 timesteps (nu × (N-1) matrix)
+            % Input constraints: -1 ≤ u ≤ 1
+            % These represent physical limits on the throttle
+            M = [-1; 1];    % Constraint matrix
+            m = [1; 1];     % Constraint bounds
             
-            % Set up constraints
+            % Initialize optimization variables
+            X = sdpvar(nx, N);    % State trajectory: [position; velocity]
+            U = sdpvar(nu, N-1);  % Input trajectory: [throttle]
             
-            % Initial state constraint
-            % The initial state deviation must equal the difference between the actual initial state
-            % and the linearization point
+            % Initialize constraints list with initial state constraint
+            % Convert initial state to deviation coordinates by subtracting linearization point
             con = (X(:,1) == x0 - mpc.xs);
             
-            % Loop through the prediction horizon to set up dynamics and input constraints
+            % Build constraints and objective over prediction horizon
+            obj = 0;
             for k = 1:N-1
-                % System dynamics constraint
-                % The state evolution follows the discrete-time linearized dynamics:
-                % x(k+1) - xs = A(x(k) - xs) + B(u(k) - us) +Bd(k)
+                % State dynamics constraint in deviation coordinates
+                % x(k+1) - xs = A(x(k) - xs) + B(u(k) - us) + B(d(k))
                 d = [0; mpc.B(2,1)*d_est];  % Only affects velocity
                 con = con + (X(:,k+1) == mpc.A*X(:,k) + mpc.B*U(:,k) + d);
                 
-                % Input constraints
-                % The absolute input (U + us) must stay within ±1
-                % Transform deviation coordinates to absolute: u = U + us
+                % Input constraints in absolute coordinates
+                % Transform from deviation coordinates: u_absolute = u_deviation + u_steady
                 con = con + (M*(U(:,k) + mpc.us) <= m);
-            end
-            
-            % Constraint on first input to be applied
-            % Convert the input from deviation coordinates back to absolute coordinates
-            con = con + (u0 == U(:,1) + mpc.us);
-            
-            % Set up the objective function
-            obj = 0;
-            
-            % Loop through the prediction horizon to sum up stage costs
-            for k = 1:N-1
-                % State error term
-                % x_ref is the target state in absolute coordinates
-                % Convert to deviation coordinates by subtracting xs
-                x_ref = [0; V_ref];                    % Target state (no position reference, only velocity)
-                state_error = X(:,k) - (x_ref - mpc.xs);   % Error in deviation coordinates
-                obj = obj + state_error'*Q*state_error;    % Quadratic state cost
                 
-                % Input error term
-                % Track the reference input in deviation coordinates
-                input_error = U(:,k) - (u_ref - mpc.us);   % Error in deviation coordinates
-                obj = obj + input_error'*R*input_error;    % Quadratic input cost
+                % State tracking cost
+                % Define reference state (only tracking velocity)
+                x_ref = [0; V_ref];
+                state_error = X(:,k) - (x_ref - mpc.xs);
+                obj = obj + state_error'*Q_track*state_error;
+                
+                % Input tracking cost
+                % Track reference input in deviation coordinates
+                input_error = U(:,k) - (u_ref - mpc.us);
+                obj = obj + input_error'*R_track*input_error;
             end
-            
-            % Add terminal cost (same form as stage cost)
+
+            % Add terminal state cost for stability
             x_ref = [0; V_ref];
             state_error = X(:,N) - (x_ref - mpc.xs);
-            obj = obj + state_error'*Q*state_error;
+            obj = obj + state_error'*Q_term*state_error;
+            
+            % Constraint to extract first input to apply to system
+            % Convert back to absolute coordinates
+            con = con + (u0 == U(:,1) + mpc.us);
             
             % Store variables for debugging
             debugVars = {X, U};

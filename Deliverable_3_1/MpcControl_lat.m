@@ -39,110 +39,98 @@ classdef MpcControl_lat < MpcControlBase
             
             % SET THE PROBLEM CONSTRAINTS con AND THE OBJECTIVE obj HERE
 
-            % Define cost matrices for the objective function
-            % Q penalizes state deviations: lateral position (y) and heading angle (theta)
-            % Higher weight on theta ensures good heading tracking
-            Q = diag([1, 10]);     % State cost: [y_weight, theta_weight]
-            R = 1;                 % Input cost: Penalty on steering angle
+            % State cost matrix Q penalizes deviations from reference state
+            % - Weight of 2 on lateral position error (y)
+            % - Weight of 4 on heading angle error (theta)
+            Q_track = diag([2, 4]);
             
-            % Define state constraints
-            % The car must stay within road boundaries and maintain reasonable heading
-            % y ∈ [-0.5, 3.5] meters (road boundaries)
-            % theta ∈ [-5°, 5°] (heading angle limits)
-            F = [1 0;              % Maximum y constraint
-                 -1 0;             % Minimum y constraint
-                 0 1;              % Maximum theta constraint
-                 0 -1];           % Minimum theta constraint
-            f = [3.5;              % Maximum y value
-                 0.5;              % Minimum y value (negative)
-                 5*pi/180;         % Maximum theta value
-                 5*pi/180];        % Maximum theta value (symmetric)
+            % Input cost matrix R penalizes control effort
+            % - Weight of 5 on steering angle changes
+            R_track = 5;
             
-            % Define input constraints
-            % Limit steering angle to ±30 degrees
-            M = [1; -1];           % For u ≤ 30° and -u ≤ 30°
-            m = [30*pi/180;        % Maximum steering angle
-                 30*pi/180];       % Maximum steering angle (symmetric)
+            % State constraints define safe operating region
+            % - Lateral position y must stay within road boundaries [-0.5, 3.5] meters
+            % - Heading angle theta must stay within [-5°, 5°]
+            F = [1  0;    % y ≤ 3.5
+                -1  0;    % -y ≤ 0.5
+                 0  1;    % theta ≤ 5°
+                 0 -1];   % -theta ≤ 5°
+            f = [3.5;              % Max y
+                 0.5;              % Min y (negative)
+                 5*pi/180;         % Max theta
+                 5*pi/180];        % Min theta (symmetric)
             
-            % Compute terminal cost and control law using LQR
-            % This provides stability guarantees for the MPC controller
-            [K, Qf,~] = dlqr(mpc.A,mpc.B,Q,R);   % Compute LQR solution
-            K = -K;                              % Convert to state feedback form u = Kx
+            % Input constraints limit steering angle to ±30 degrees
+            M = [1; -1];           % Steering constraints: δ ≤ 30° and -δ ≤ 30°
+            m = [30*pi/180;        % Max steering angle
+                 30*pi/180];       % Min steering angle (symmetric)
+            
+            % Terminal cost and controller for stability
+            % More conservative weights for terminal control
+            Q_term = diag([1, 2]);    % Terminal state cost
+            R_term = 10;               % Terminal input cost
+            [Kt, Qf, ~] = dlqr(mpc.A, mpc.B, Q_term, R_term);  % LQR solution
+            Kt = -Kt;  % Convert to state feedback form u = Kx
             
             % Compute maximal invariant set for terminal constraints
-            % This set guarantees recursive feasibility and stability
-            Xf = polytope([F;M*K],[f;m]);        % Initial polytope with state and input constraints
-            Acl = mpc.A+mpc.B*K;                 % Closed-loop system matrix
-            % Iterate until we find the maximal invariant set
+            % This ensures recursive feasibility and stability
+            Xf = polytope([F; M*Kt], [f; m]);  % Initial polytope combining state and input constraints
+            Acl = mpc.A + mpc.B*Kt;           % Closed-loop dynamics matrix
+            
+            % Iteratively compute the maximal invariant set
             while 1
-                prevXf = Xf;                     % Store current set
-                [T,t] = double(Xf);              % Get inequality representation
-                preXf = polytope(T*Acl,t);       % Compute one-step backward reachable set
-                Xf = intersect(Xf, preXf);       % Intersect with current set
-                if isequal(prevXf, Xf)           % Check if set has converged
+                prevXf = Xf;
+                [T, t] = double(Xf);
+                preXf = polytope(T*Acl, t);    % One-step backward reachable set
+                Xf = intersect(Xf, preXf);     % Intersect with current set
+                if isequal(prevXf, Xf)
                     break
                 end
             end
-            [Ff,ff] = double(Xf);                % Get final inequality representation
+            [Ff, ff] = double(Xf);  % Get final polytope representation
             
-            % Visualize the constraint sets
+            % Visualize constraint sets (optional but helpful for debugging)
             figure
             hold on; grid on;
-            plot(polytope(F,f),'g');             % Plot state constraints in green
-            plot(Xf,'r');                        % Plot terminal set in red
+            plot(polytope(F,f), 'g');  % State constraints in green
+            plot(Xf, 'r');            % Terminal set in red
             xlabel('y position [m]');
             ylabel('steering angle [rad]');
             
-            % Set up MPC optimization problem
+            % Set up optimization variables
+            X = sdpvar(nx, N);     % State trajectory [y; theta]
+            U = sdpvar(nu, N-1);   % Input trajectory [steering_angle]
             
-            % Define optimization variables
-            X = sdpvar(nx, N);    % States over horizon (deviation from xs)
-            U = sdpvar(nu, N-1);  % Inputs over horizon (deviation from us)
+            % Initialize constraint list with initial condition
+            con = (X(:,1) == x0 - mpc.xs);  % Initial state in deviation coordinates
             
-            % Initial state constraint in deviation coordinates
-            con = (X(:,1) == x0 - mpc.xs);
-            
-            % Loop through prediction horizon
+            % Build constraints and objective over prediction horizon
+            obj = 0;
             for k = 1:N-1
-                % System dynamics in deviation coordinates
-                % x(k+1) - xs = A(x(k) - xs) + B(u(k) - us)
+                % Dynamic constraints (deviation coordinates)
                 con = con + (X(:,k+1) == mpc.A*X(:,k) + mpc.B*U(:,k));
                 
-                % State constraints in absolute coordinates
-                % Convert deviation state back to absolute for constraint checking
+                % State constraints (convert to absolute coordinates)
                 con = con + (F*(X(:,k) + mpc.xs) <= f);
                 
-                % Input constraints in absolute coordinates
-                % Convert deviation input back to absolute for constraint checking
+                % Input constraints (convert to absolute coordinates)
                 con = con + (M*(U(:,k) + mpc.us) <= m);
+                
+                % Accumulate objective: tracking cost
+                state_error = X(:,k) - (x_ref - mpc.xs);
+                input_error = U(:,k) - (u_ref - mpc.us);
+                obj = obj + state_error'*Q_track*state_error + input_error'*R_track*input_error;
             end
             
-            % Terminal constraint from invariant set (in deviation coordinates)
-            % This ensures stability and recursive feasibility
-            con = con + (Ff*(X(:,N) + mpc.xs) <= ff);
+            % Add terminal constraint and cost
+            con = con + (Ff*(X(:,N) + mpc.xs) <= ff);  % Terminal set constraint
+            state_error = X(:,N) - (x_ref - mpc.xs);
+            obj = obj + state_error'*Qf*state_error;    % Terminal cost from LQR
             
-            % First input constraint (convert back to absolute coordinates)
+            % Extract first input (convert back to absolute coordinates)
             con = con + (u0 == U(:,1) + mpc.us);
             
-            % Set up objective function
-            obj = 0;
-            
-            % Add stage costs
-            for k = 1:N-1
-                % State error cost (in deviation coordinates)
-                state_error = X(:,k) - (x_ref - mpc.xs);
-                obj = obj + state_error'*Q*state_error;
-                
-                % Input error cost (in deviation coordinates)
-                input_error = U(:,k) - (u_ref - mpc.us);
-                obj = obj + input_error'*R*input_error;
-            end
-            
-            % Add terminal cost using LQR 
-            state_error = X(:,N) - (x_ref - mpc.xs);
-            obj = obj + state_error'*Qf*state_error;
-            
-            % Store variables for debugging
+            % Store debugging variables
             debugVars = {X, U};
             
             % YOUR CODE HERE YOUR CODE HERE YOUR CODE HERE YOUR CODE HERE
