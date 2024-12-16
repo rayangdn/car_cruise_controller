@@ -130,8 +130,8 @@ U_tilde.minHRep();
 % This ensures stability of the MPC scheme
 
 % More conservative weights for terminal control
-Q_term = diag([4, 2]);      % Half of tracking weights - more conservative
-R_term = 30;               % Double input penalty - smoother control
+Q_term = Q_track/2;      % Half of tracking weights - more conservative
+R_term = R_track*2;               % Double input penalty - smoother control
 
 % Compute terminal controller and cost
 [Kt, Qf] = dlqr(A, B, Q_term, R_term);

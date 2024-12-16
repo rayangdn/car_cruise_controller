@@ -47,15 +47,15 @@ classdef MpcControl_lon < MpcControlBase
             % Cost matrices for the MPC objective function
             % Q_track: State cost matrix that penalizes deviations from reference state
             % - No penalty on position (first state)
-            % - Weight of 4 on velocity error (second state)
-            Q_track = diag([0, 4]);
+            % - Weight of 8 on velocity error (second state)
+            Q_track = diag([0, 8]);
             
             % R_track: Input cost matrix that penalizes control effort
-            % - Weight of 5 on throttle usage
-            R_track = 5;
+            % - Weight of 7 on throttle usage
+            R_track = 7;
             
             % More conservative weights for terminal control
-            Q_term = diag([0, 2]);
+            Q_term = Q_track/2;
             
             % Input constraints: -1 ≤ u ≤ 1
             % These represent physical limits on the throttle
@@ -74,8 +74,9 @@ classdef MpcControl_lon < MpcControlBase
             obj = 0;
             for k = 1:N-1
                 % State dynamics constraint in deviation coordinates
-                % x(k+1) = A*x(k) + B*u(k)
-                con = con + (X(:,k+1) == mpc.A*X(:,k) + mpc.B*U(:,k));
+                % x(k+1) - xs = A(x(k) - xs) + B(u(k) - us) + B(d(k))
+                d = [0; mpc.B(2,1)*d_est];  % Only affects velocity
+                con = con + (X(:,k+1) == mpc.A*X(:,k) + mpc.B*U(:,k) + d);
                 
                 % Input constraints in absolute coordinates
                 % Transform from deviation coordinates: u_absolute = u_deviation + u_steady
@@ -92,7 +93,7 @@ classdef MpcControl_lon < MpcControlBase
                 input_error = U(:,k) - (u_ref - mpc.us);
                 obj = obj + input_error'*R_track*input_error;
             end
-            
+
             % Add terminal state cost for stability
             x_ref = [0; V_ref];
             state_error = X(:,N) - (x_ref - mpc.xs);
@@ -135,7 +136,7 @@ classdef MpcControl_lon < MpcControlBase
 
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
             % YOUR CODE HERE YOUR CODE HERE YOUR CODE HERE YOUR CODE HERE
-
+            
             % Store the target velocity as our reference
             % This is the absolute velocity we want to achieve
             Vs_ref = ref;
@@ -144,13 +145,14 @@ classdef MpcControl_lon < MpcControlBase
             % At steady state, the state doesn't change, so x(k+1) = x(k)
             % This means: 0 = A*(Vs_ref - xs) + B*(us_ref - us)
             % Solving for us_ss:
-            % us_ref = us - A*(Vs_ref-xs)/B
+            % us_ref = us - A*(Vs_ref-xs)/B + B*d_est 
             % where:
             %   - A, B are the linearized system matrices for velocity
             %   - xs is the linearization velocity point
             %   - us is the linearization input point
             %   - (Vs_ref-xs) is how far we want to deviate from the linearization point
-            us_ref = us - (A*(Vs_ref-xs))/B;
+            %   - d_est is the constant disturbance on the velocity
+            us_ref = us - (A*(Vs_ref-xs))/B - d_est;
             
             % Enforce input constraints by saturating the computed input
             % The input must stay within ±1 

@@ -67,8 +67,8 @@ classdef MpcControl_lat < MpcControlBase
             
             % Terminal cost and controller for stability
             % More conservative weights for terminal control
-            Q_term = diag([1, 2]);    % Terminal state cost
-            R_term = 10;               % Terminal input cost
+            Q_term = Q_track/2;    % Terminal state cost
+            R_term = R_track*2;               % Terminal input cost
             [Kt, Qf, ~] = dlqr(mpc.A, mpc.B, Q_term, R_term);  % LQR solution
             Kt = -Kt;  % Convert to state feedback form u = Kx
             
@@ -88,15 +88,7 @@ classdef MpcControl_lat < MpcControlBase
                 end
             end
             [Ff, ff] = double(Xf);  % Get final polytope representation
-            
-            % Visualize constraint sets (optional but helpful for debugging)
-            figure
-            hold on; grid on;
-            plot(polytope(F,f), 'g');  % State constraints in green
-            plot(Xf, 'r');            % Terminal set in red
-            xlabel('y position [m]');
-            ylabel('steering angle [rad]');
-            
+
             % Set up optimization variables
             X = sdpvar(nx, N);     % State trajectory [y; theta]
             U = sdpvar(nu, N-1);   % Input trajectory [steering_angle]
