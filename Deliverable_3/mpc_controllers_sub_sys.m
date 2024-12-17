@@ -5,7 +5,7 @@ clc
 %% Initialize MPC Controllers
 
 Ts = 1/10;                               % Sample time: 0.1 seconds
-H = 20;                                  % Prediction horizon: 2 seconds
+H = 2;                                  % Prediction horizon: 2 seconds
 
 % Setup car and get linearized model
 car = Car(Ts);

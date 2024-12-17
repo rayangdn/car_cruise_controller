@@ -6,7 +6,7 @@ clc
 
 Ts = 1/10;  % Sample time from project description
 car = Car(Ts);
-H = 20;      % 3 seconds prediction horizon to match required settling time
+H = 2;      % 2 seconds prediction horizon
 
 % Create non linear controller
 mpc = NmpcControl(car, H);

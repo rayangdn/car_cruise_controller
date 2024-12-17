@@ -30,8 +30,8 @@ B = -B;  % This matches equation (9) from the problem statement
 
 % Define cost weights for tracking control
 % States: [relative position; relative velocity]
-Q_track = diag([8, 4]);  % Higher weight on position than velocity 
-R_track = 15;             % Moderate penalty on control effort
+Q_track = diag([30, 60]);  % Higher weight on position than velocity 
+R_track = 4;             % Moderate penalty on control effort
 
 % Compute optimal feedback gain using discrete-time LQR
 K = -dlqr(A, B, Q_track, R_track); 
