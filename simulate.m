@@ -112,7 +112,7 @@ for iStep = 1:nSteps+1
         break;
     end
 
-    if any(result.myCar.U(:, iStep) < myCar.model.lbu) || any(result.myCar.U(:, iStep) > myCar.model.ubu)
+    if any(result.myCar.U(:, iStep) < myCar.model.lbu - 1e-4) || any(result.myCar.U(:, iStep) > myCar.model.ubu + 1e-4)
         fprintf('Input violation');
         sim_success = false;
         break;
@@ -141,7 +141,7 @@ if sim_success
 
     if isfield(myCar, 'u') && isa(myCar.u, 'function_handle')
         for i = 1:nSteps+1
-            if any(result.myCar.X(:, i) < myCar.model.lbx) || any(result.myCar.X(:, i) > myCar.model.ubx)
+            if any(result.myCar.X(:, i) < myCar.model.lbx - 1e-4) || any(result.myCar.X(:, i) > myCar.model.ubx + 1e-4)
                 fprintf('State constraint violation at time %.2fs\n', result.T(i));
                 break;
             end

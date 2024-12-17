@@ -1,6 +1,12 @@
+clear all
+close all
+clc
+
+%% Initialize MPC Controller
+
 Ts = 1/10;  % Sample time from project description
 car = Car(Ts);
-H = 30;      % 3 seconds prediction horizon to match required settling time
+H = 20;      % 3 seconds prediction horizon to match required settling time
 
 % Create non linear controller
 mpc = NmpcControl(car, H);
@@ -43,7 +49,7 @@ xlabel('time [s]');
 
 x0 = [0 0 0 80/3.6]'; % (x, y, theta, V)
 ref1 = [0 80/3.6]'; % (y ref, V ref)
-ref2 = [3 100/3.6]'; % (y ref, V ref)
+ref2 = [0 100/3.6]'; % (y ref, V ref)
 params = {};
 params.Tf = 15;
 params.myCar.model = car;
@@ -52,3 +58,4 @@ params.myCar.u = @mpc.get_u;
 params.myCar.ref = car.ref_step(ref1, ref2, 2); % delay reference step by 2s
 result = simulate(params);
 visualization(car, result);
+

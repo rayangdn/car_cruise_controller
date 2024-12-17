@@ -48,7 +48,7 @@ classdef MpcControlBase
                 [sol, solve_status] = mpc.ctrl_opti({x, ref_x, ref_u, xOther});
             end
             if iscell(sol)
-                u = sol{1};  
+                u = sol{1};
             else
                 u = sol;
             end

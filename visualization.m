@@ -134,7 +134,11 @@ function visualization(car, result)
     % end
     yyaxis right
     ylabel('theta [deg]');
-    ylim([-1, 7]);
+    if min(rad2deg(theta1)) < -1
+        ylim([min(-8, min(rad2deg(theta1))), max(8, max(rad2deg(theta1)))]);
+    else
+        ylim([min(-1, min(rad2deg(theta1))), max(7, max(rad2deg(theta1)))]);
+    end
     plot(t, rad2deg(theta1), 'r', 'LineWidth', 1.5, 'DisplayName', 'Car 1 heading');
     legend(inputplotAx, 'show');
 
@@ -196,8 +200,9 @@ function visualization(car, result)
     title(disDiffplotAx, 'Relative Distance to Car 2');
     xlim(disDiffplotAx, [0, t(end)]);
     if isfield(result, 'otherCar')
-        ylim(disDiffplotAx, [min(x2-x1)-5, max(x2-x1) + 5]);
-        plot(disDiffplotAx, t, x2-x1, 'b', 'LineWidth', 1.5, 'DisplayName', 'relative distance'); % Blue for car 1
+        dist = sqrt((x2-x1).^2 + (y2-y1).^2);
+        ylim(disDiffplotAx, [min(min(dist), -0.1), max(dist) + 5]);
+        plot(disDiffplotAx, t, dist, 'b', 'LineWidth', 1.5, 'DisplayName', 'relative distance'); % Blue for car 1
         legend(disDiffplotAx, 'show');
     end
 

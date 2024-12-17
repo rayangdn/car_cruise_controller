@@ -55,64 +55,62 @@ classdef NmpcControl < handle
 
             % Define your problem using the opti object created above
 
-            % Define variables for states and inputs over the horizon
-            X = opti.variable(nx, N);    % states [x,y,θ,V] over horizon
-            U = opti.variable(nu, N-1);  % inputs [δ,uT] over horizon
+            % Cost function weights
+            Q_track = diag([0, 20, 5, 50]);    % State tracking weights:
+                                              % [x position (unused), y position, heading angle, velocity]
+                                              % Higher weight (30) on velocity tracking
+            R_track = diag([10, 10]);         % Input cost weights for smoother control:
+                                              % [steering angle, throttle]
+            Q_term = Q_track/2;               % Terminal cost weight (typically smaller than tracking cost)
             
-            % Initial input constraint 
-            opti.subject_to(obj.u0 == U(:,1));
-
-            % Initial state constraint 
-            opti.subject_to(X(:,1) == obj.x0);
-
-            % Initial input constraint 
-            opti.subject_to(obj.u0 == U(:,1));
-
-            % Initial state constraint
-            opti.subject_to(X(:,1) == obj.x0);
+            % Define optimization variables
+            X = opti.variable(nx, N);         % State trajectory over horizon N
+                                              % States: [x position, y position, heading angle θ, velocity V]
+            U = opti.variable(nu, N-1);       % Control inputs over horizon (N-1 steps)
+                                              % Inputs: [steering angle δ, throttle input uT]
             
-            % Dynamic constraints using RK4 integration
-            dt = car.Ts;
+            % Initial conditions constraints
+            opti.subject_to(X(:,1) == obj.x0);  % Initial state must match current state
+            opti.subject_to(obj.u0 == U(:,1));  % Initial input must match previous input (for smoothness)
+            
+            % System dynamics constraints using RK4 (Runge-Kutta 4th order) integration
+            dt = car.Ts;                      % Sampling time
             for k = 1:N-1
-                % RK4 integration
-                k1 = car.f(X(:,k),         U(:,k));
-                k2 = car.f(X(:,k) + dt/2*k1, U(:,k));
-                k3 = car.f(X(:,k) + dt/2*k2, U(:,k));
-                k4 = car.f(X(:,k) + dt*k3,   U(:,k));
-                x_next = X(:,k) + dt/6*(k1 + 2*k2 + 2*k3 + k4);
-                opti.subject_to(X(:,k+1) == x_next);
+                % RK4 integration steps for more accurate discretization
+                k1 = car.f(X(:,k), U(:,k));                    % Slope at start
+                k2 = car.f(X(:,k) + dt/2*k1, U(:,k));         % Slope at midpoint using k1
+                k3 = car.f(X(:,k) + dt/2*k2, U(:,k));         % Slope at midpoint using k2
+                k4 = car.f(X(:,k) + dt*k3, U(:,k));           % Slope at end
+                x_next = X(:,k) + dt/6*(k1 + 2*k2 + 2*k3 + k4);  % Weighted average of slopes
+                opti.subject_to(X(:,k+1) == x_next);          % Enforce dynamics constraint
             end
             
-            % State and input constraints 
-            opti.subject_to(-0.5 <= X(2,:) <= 3.5);     % y position bounds
-            opti.subject_to(-0.0873 <= X(3,:) <= 0.0873); % heading angle bounds
-            opti.subject_to(-0.5236 <= U(1,:) <= 0.5236); % steering bounds
-            opti.subject_to(-1 <= U(2,:) <= 1);   
+            % State and input constraints (physical and safety limits)
+            opti.subject_to(-0.5 <= X(2,:) <= 3.5);           % y position bounds (road limits)
+            opti.subject_to(-5*pi/180 <= X(3,:) <= 5*pi/180); % heading angle bounds (±5 degrees)
+            opti.subject_to(-30*pi/180 <= U(1,:) <= 30*pi/180); % steering angle bounds (±30 degrees)
+            opti.subject_to(-1 <= U(2,:) <= 1);               % normalized throttle bounds [-1,1]
             
-            % Weights for the cost function
-            Q_track = diag([0, 100, 10, 50]);
-            R_track = diag([1, 1]); % Smoother control
-            Q_term = 5*diag([0, 50, 5, 25]);
-            
-            % Cost function
+            % Cost function computation
             cost = 0;
             for k = 1:N-1
-                % State error (track y position, theta angle and velocity)
+                % State error vector: [x error (ignored), y error, heading error, velocity error]
                 state_error = [0; X(2,k) - obj.ref(1); X(3,k); X(4,k) - obj.ref(2)];
-                cost = cost + state_error'*Q_track*state_error + U(:,k)'*R_track*U(:,k);
                 
+                % Accumulate cost: quadratic state error + quadratic input cost
+                cost = cost + state_error'*Q_track*state_error + U(:,k)'*R_track*U(:,k);
             end
             
-            % Terminal cost with higher weights
-            state_error_N = [0; X(2,k) - obj.ref(1); X(3,k); X(4,k) - obj.ref(2)];
+            % Terminal cost (usually weighted differently to ensure stability)
+            state_error_N = [0; X(2,N) - obj.ref(1); X(3,N); X(4,N) - obj.ref(2)];
             cost = cost + state_error_N'*Q_term*state_error_N;
             
-            % Set optimization objective and first input
-            opti.minimize(cost);
-
-            % Store variables for debugging
-            obj.X = X;
-            obj.U = U;
+            % Set up optimization problem
+            opti.minimize(cost);              % Define objective function to minimize
+            
+            % Store optimization variables for debugging and visualization
+            obj.X = X;                        % Save predicted state trajectory
+            obj.U = U;                        % Save predicted control inputs
 
             % YOUR CODE HERE YOUR CODE HERE YOUR CODE HERE YOUR CODE HERE
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -155,3 +153,4 @@ classdef NmpcControl < handle
         end
     end
 end
+
