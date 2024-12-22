@@ -58,7 +58,7 @@ classdef NmpcControl < handle
             % Cost function weights
             Q_track = diag([0, 20, 5, 50]);    % State tracking weights:
                                               % [x position (unused), y position, heading angle, velocity]
-                                              % Higher weight (30) on velocity tracking
+                                              % Higher weight (50) on velocity tracking
             R_track = diag([10, 10]);         % Input cost weights for smoother control:
                                               % [steering angle, throttle]
             Q_term = Q_track/2;               % Terminal cost weight (typically smaller than tracking cost)

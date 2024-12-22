@@ -5,7 +5,7 @@ clc
 %% Initialize MPC Controllers
 
 Ts = 1/10;                               % Sample time: 0.1 seconds
-H = 3;                                  % Prediction horizon: 2 seconds
+H = 3;                                   % Prediction horizon: 3 seconds
 
 % Setup car and get linearized model
 car = Car(Ts);
@@ -37,4 +37,4 @@ params.myCar.ref = car.ref_step(ref1, ref2, 2); % delay reference step by 2s;
 result = simulate(params);
 visualization(car, result);
 
-% [f1, f2, f3, f4, f5, f6] = plot_results(result);
+%[f1, f2, f3, f4, f5, f6] = plot_results(result);
