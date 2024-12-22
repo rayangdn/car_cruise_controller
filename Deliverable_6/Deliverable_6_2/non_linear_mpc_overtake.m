@@ -30,7 +30,7 @@ params.otherCar.x0 = x0_other;
 params.otherCar.u = car.u_const(80/3.6);
 
 result = simulate(params);
-%visualization(car, result);
+visualization(car, result);
 
-[f1, f2, f3, f4, f5, f6] = plot_results(result);
+%[f1, f2, f3, f4, f5, f6] = plot_results(result);
 

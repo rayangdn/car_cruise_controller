@@ -58,7 +58,6 @@ classdef NmpcControl_overtake < handle
             % Cost function weights
             Q_track = diag([0, 1, 20, 8]);    % State tracking weights:
                                               % [x position (unused), y position, heading angle, velocity]
-                                              % Higher weight (30) on velocity tracking
             R_track = diag([10, 10]);         % Input cost weights for smoother control:
                                               % [steering angle, throttle]
             Q_term = Q_track/2;               % Terminal cost weight
