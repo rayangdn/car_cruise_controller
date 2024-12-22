@@ -46,7 +46,7 @@ classdef MpcControl_lon < MpcControlBase
           
             % Load pre-computed tube MPC components for robust control
             data = load('tube_mpc_data.mat');
-            xsafe = [data.xsafe_pos; 0];  % Safe reference point [position; velocity]
+            xsafe = [data.x_safe_pos; 0];  % Safe reference point [position; velocity]
             
             % Cost matrices for nominal trajectory tracking
             Q_track = data.Q_track;    % State cost matrix

@@ -40,13 +40,13 @@ classdef MpcControl_lat < MpcControlBase
             % SET THE PROBLEM CONSTRAINTS con AND THE OBJECTIVE obj HERE
 
             % State cost matrix Q penalizes deviations from reference state
-            % - Weight of 2 on lateral position error (y)
-            % - Weight of 4 on heading angle error (theta)
-            Q_track = diag([2, 4]);
+            % - Weight of 1 on lateral position error (y)
+            % - Weight of 1 on heading angle error (theta)
+            Q_track = diag([1, 1]);
             
             % Input cost matrix R penalizes control effort
-            % - Weight of 5 on steering angle changes
-            R_track = 5;
+            % - Weight of 2 on steering angle changes
+            R_track = 2;
             
             % State constraints define safe operating region
             % - Lateral position y must stay within road boundaries [-0.5, 3.5] meters

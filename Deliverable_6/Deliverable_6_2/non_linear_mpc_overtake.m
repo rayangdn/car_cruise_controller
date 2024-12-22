@@ -6,7 +6,7 @@ clc
 
 Ts = 1/10;  % Sample time from project description
 car = Car(Ts);
-H = 2;      % 2 seconds prediction horizon
+H = 3;      % 3 seconds prediction horizon
 
 % Create non linear controller
 mpc = NmpcControl_overtake(car, H);

@@ -47,12 +47,12 @@ classdef MpcControl_lon < MpcControlBase
             % Cost matrices for the MPC objective function
             % Q_track: State cost matrix that penalizes deviations from reference state
             % - No penalty on position (first state)
-            % - Weight of 4 on velocity error (second state)
-            Q_track = diag([0, 4]);
+            % - Weight of 2 on velocity error (second state)
+            Q_track = diag([0, 2]);
             
             % R_track: Input cost matrix that penalizes control effort
             % - Weight of 5 on throttle usage
-            R_track = 5;
+            R_track = 1;
             
             % More conservative weights for terminal control
             Q_term = Q_track/2;

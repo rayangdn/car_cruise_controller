@@ -4,7 +4,7 @@ clc
 
 %% Initialize MPC Controllers
 Ts = 1/10;                               % Sample time: 0.1 seconds
-H = 2;                                   % Prediction horizon: 2 seconds
+H = 3;                                   % Prediction horizon: 2 seconds
 
 % Setup car and get linearized model
 car = Car(Ts);
@@ -18,7 +18,7 @@ mpc_lat = MpcControl_lat(sys_lat, Ts, H);
 mpc = car.merge_lin_controllers(mpc_lon, mpc_lat);
 
 
-%% Simulating Closed-Loop robuste tube MPC 
+%% Simulating Closed-Loop robust tube MPC 
 
 ref = [0 120/3.6]';
 params = {};

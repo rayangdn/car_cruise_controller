@@ -30,8 +30,8 @@ B = -B;  % This matches equation (9) from the problem statement
 
 % Define cost weights for tracking control
 % States: [relative position; relative velocity]
-Q_track = diag([30, 60]);  % Higher weight on position than velocity 
-R_track = 4;             % Moderate penalty on control effort
+Q_track = diag([10, 30]);  % Higher weight on velocity than position 
+R_track = 1;              % Moderate penalty on control effort
 
 % Compute optimal feedback gain using discrete-time LQR
 K = -dlqr(A, B, Q_track, R_track); 
@@ -42,7 +42,7 @@ Acl = A + B*K;
 %% Minimal Robust Invariant Set Computation
 % Calculate the smallest set that bounds the effect of disturbances.
 % This set represents the tube around our nominal trajectory.
-uTs = 0;
+uTs = us(2);
 % Define input disturbance set (uncertain lead car throttle)
 W = Polyhedron('lb', uTs-0.5, 'ub', uTs+0.5);  % Throttle can vary by ±0.5 TAKE INTO ACCOUNT UTs?
 W = -B*W;                                       % Map throttle disturbance to state space
@@ -93,23 +93,18 @@ xlabel('Position Error');
 ylabel('Velocity Error');
 title('Minimal Robust Invariant Set');
 
-%% Define Safe Distance and Constraints
-% Set up the state and input constraints for the system.
-% These ensure safety and feasible operation.
+%% Constraint Definition
+% State constraints
+% The constraint ˜x - x ≥ 6 means the relative position must be at least 6m
+% Define x_safe (steady-state safe point behind lead car)
+x_safe_pos = 8;             % Choose a comfortable safety margin 
+x_safe = [x_safe_pos; 0];    % [position; velocity]
+min_gap = 6;                 % Minimum required gap between cars
 
-% Define safety parameters
-xsafe_pos = 8;           % Desired safety gap (meters)
-xsafe = [xsafe_pos; 0];  % Safety reference point [position; velocity]
-
-% Define state constraints relative to safety gap
-min_total_distance = 6;   % Minimum required gap between vehicles
-max_total_distance = 1e3;  % Maximum desired following distance
-max_rel_velocity = 1e3;    % Maximum allowed relative velocity
-
-% Convert absolute constraints to relative constraints
-x_min = [min_total_distance - xsafe_pos; -max_rel_velocity];
-x_max = [max_total_distance - xsafe_pos;  max_rel_velocity];
-X = Polyhedron('lb', x_min, 'ub', x_max);
+% State constraint set X
+% For relative position: Δx ≥ 6 
+% We don't constrain relative velocity directly
+X = Polyhedron('A', [-1 0], 'b', -(min_gap - x_safe_pos)); % Only constrain relative position
 
 % Define input constraints (throttle limits)
 u_min = -1;  % Maximum braking
@@ -137,6 +132,7 @@ R_term = R_track*2;               % Double input penalty - smoother control
 [Kt, Qf] = dlqr(A, B, Q_term, R_term);
 Kt = -Kt;
 Acl_t = A + B*Kt;  % Terminal closed-loop system
+
 
 %% Terminal Set Computation
 % Compute the terminal set for the MPC controller
@@ -221,5 +217,5 @@ save('tube_mpc_data.mat', ...
     'Q_term', 'R_term', ...            % Terminal weights
     'E', 'terminal_set', ...           % Sets
     'X_tilde', 'U_tilde', ...          % Constraints
-    'min_total_distance', 'xsafe_pos' ...  % Safety parameters
+    'min_gap', 'x_safe_pos' ...  % Safety parameters
 );

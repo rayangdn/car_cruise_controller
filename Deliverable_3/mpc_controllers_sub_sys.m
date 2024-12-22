@@ -105,5 +105,5 @@ params.myCar.ref = car.ref_step(ref1, ref2, 5); % delay reference step by 5s
 result = simulate(params);
 visualization(car, result);
 
-% [f1, f2, f3, f4, f5, f6] = plot_results(result);
+%[f1, f2, f3, f4, f5, f6] = plot_results(result);
 
