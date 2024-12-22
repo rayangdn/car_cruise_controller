@@ -4,7 +4,6 @@ function [f1, f2, f3, f4, f5, f6] = plot_results(result, varargin)
 % throttle, steering, disturbance estimation, and relative distance
 %
 % Inputs:
-%   car - Structure containing vehicle parameters
 %   result - Structure containing simulation results
 %   varargin - Optional input for save directory (default: 'plots')
 %
