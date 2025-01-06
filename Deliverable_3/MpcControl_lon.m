@@ -59,7 +59,7 @@ classdef MpcControl_lon < MpcControlBase
             
             % Input constraints: -1 ≤ u ≤ 1
             % These represent physical limits on the throttle
-            M = [-1; 1];    % Constraint matrix
+            M = [1; -1];    % Constraint matrix
             m = [1; 1];     % Constraint bounds
             
             % Initialize optimization variables

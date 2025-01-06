@@ -100,7 +100,7 @@ classdef NmpcControl < handle
                 cost = cost + state_error'*Q_track*state_error + U(:,k)'*R_track*U(:,k);
             end
             
-            % Terminal cost (usually weighted differently to ensure stability)
+            % Terminal cost ensuring stability
             state_error_N = [0; X(2,N) - obj.ref(1); X(3,N); X(4,N) - obj.ref(2)];
             cost = cost + state_error_N'*Q_term*state_error_N;
             

@@ -143,9 +143,9 @@ classdef MpcControl_lon < MpcControlBase
             
             % Compute the required steady-state input (throttle) to maintain the reference velocity
             % At steady state, the state doesn't change, so x(k+1) = x(k)
-            % This means: 0 = A*(Vs_ref - xs) + B*(us_ref - us)
+            % This means: 0 = A*(Vs_ref - xs) + B*(us_ref - us) + B*d_est
             % Solving for us_ss:
-            % us_ref = us - A*(Vs_ref-xs)/B + B*d_est 
+            % us_ref = us - A*(Vs_ref-xs)/B - d_est 
             % where:
             %   - A, B are the linearized system matrices for velocity
             %   - xs is the linearization velocity point
